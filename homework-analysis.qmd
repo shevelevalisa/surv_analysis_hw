@@ -15,15 +15,10 @@ library(ggsurvfit)
 ```
 ## 1. Импорт данных и составление выборки
 
-* **Задача 1:** Загрузите data.csv. Отберите 300 строк без возвращения в исследуемую выборку.
+* **Задача 1:** Загрузите data.csv
 ```{r}
 data <- read.csv("data.csv")
-data2 <-
-  set.seed(1)
-subsample <- sample.int(nrow(population), size = 300, replace = FALSE)
-an_data <- population[subsample, ]
-
-head(an_data)
+head(data)
 ```
 
 ## 2. Кривые Каплана–Мейера
