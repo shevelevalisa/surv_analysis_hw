@@ -8,73 +8,191 @@ format:
 
 ## Библиотеки
 
-```{r}
+```{r, echo = FALSE, warning = FALSE}
 library(tidyverse)
 library(survival)
 library(ggsurvfit)
+library(gtsummary)
+library(broom)
 ```
 ## 1. Импорт данных и составление выборки
 
 * **Задача 1:** Загрузите csv файл, созданный в `homework-data.qmd`
 ```{r}
-data <- 
+data <- read.csv("data.csv")
 ```
 
-## 2. Кривые Каплана–Мейера
+## 2. Кривые Каплана–Майера
 * **Задача 2.1: Общая кривая выживаемости.** 
-Постройте общую кривую Каплана–Мейера. Отметьте цензурированные наблюдения, добавьте 95% доверительный интервал. Оцените медиану времени наблюдения (через обратный К-М). Оцените медиану выживаемости. Укажите выживаемости на **1, 3 и 5 лет** с начала наблюдения.
+Постройте общую кривую Каплана–Майера. Отметьте цензурированные наблюдения, добавьте 95% доверительный интервал. Оцените медиану времени наблюдения (через обратный К-М). Оцените медиану выживаемости. Укажите выживаемости на **1, 3 и 5 лет** с начала наблюдения, можете оформлять таблицы с помощью `tbl_survfit()`.
 
 ```{r}
+fit <- survfit2(Surv(time, status) ~ 1, data)
+fit_cens <- survfit2(Surv(time, abs(status - 1)) ~ 1, data)
 
+ggsurvfit(fit, linewidth = 1) +
+  add_censor_mark(stroke = 1) +
+  add_confidence_interval(alpha = 0.08) +
+  scale_ggsurvfit(
+    y_scales = list(breaks = seq(0, 1, 0.2))
+  ) +
+  theme_classic(base_size = 13) +
+  labs(x = "Time since diagnosis, years", y = "OS")
+
+tbl_survfit(
+  fit,
+  probs = 0.5,
+  statistic = "{estimate}",
+  label_header = "median surv, years"
+)
+
+tbl_survfit(
+  fit_cens,
+  probs = .5,
+  statistic = "{estimate}",
+  label_header = "median, years"
+)
+
+tbl_survfit(fit, times = c(1, 3, 4), label_header = "{time}y", label = "OS")
 ```
 
 * **Задача 2.2: Сравнение кривых по вмешательству и числу лейкоцитов.** 
-1. Постройте на одном графике кривые Каплана–Мейера для `A = 0` и `A = 1` по всей выборке. Добавьте 95%-е доверительные интервалы и таблицу числа пациентов под риском.
-2. Разделите пациентов на две подгруппы по числу лейкоцитов: `wbc <= 100` и `wbc > 100`. В каждой подгруппе постройте кривые для `A = 0` и `A = 1` с 95%-ми доверительными интервалами и таблицей числа пациентов под риском. Покажите результаты на двух графиках, на одном графике с двумя панелями (facet_wrap) или на одном графике с четырьмя кривыми. 
-```{r}
+1. Постройте на одном графике кривые Каплана–Майера для `surgery = 0` и `surgery = 1` по всей выборке. Добавьте 95% доверительные интервалы и таблицу числа пациентов под риском.
+2. Разделите пациентов на две подгруппы по числу лейкоцитов: `wbc <= 100` и `wbc > 100`. В каждой подгруппе постройте кривые для `surgery = 0` и `surgery = 1` с 95% доверительными интервалами и таблицей числа пациентов под риском. Покажите результаты на двух графиках, на одном графике с двумя панелями (facet_wrap) или на одном графике с четырьмя кривыми. 
 
+```{r}
+fit <- survfit2(Surv(time, status) ~ surgery, data)
+fit_cens <- survfit2(Surv(time, abs(status - 1)) ~ surgery, data)
+
+ggsurvfit(fit, linewidth = 1) +
+  add_confidence_interval(alpha = 0.08) +
+  add_risktable(risktable_stats = "n.risk") +
+  scale_ggsurvfit(
+    y_scales = list(breaks = seq(0, 1, 0.2))
+  ) +
+  theme_classic(base_size = 13) +
+  labs(x = "Time since diagnosis, years", y = "OS")
+```
+
+```{r}
+data <- data %>%
+  mutate(wbc_bin = case_when(wbc > 100 ~ "WBC > 100", TRUE ~ "WBC <= 100"))
+fit <- survfit2(Surv(time, status) ~ surgery + wbc_bin, data)
+
+ggsurvfit(fit, linewidth = 1) +
+  add_confidence_interval(alpha = 0.08) +
+  add_risktable(risktable_stats = "n.risk") +
+  scale_ggsurvfit(
+    y_scales = list(breaks = seq(0, 1, 0.2))
+  ) +
+  theme_classic(base_size = 13) +
+  labs(x = "Time since diagnosis, years", y = "OS")
+
+tbl_survfit(
+  fit_cens,
+  probs = .5,
+  statistic = "{estimate}",
+  label_header = "median, years"
+)
 ```
 
 * **Задача 2.3: Логранговые тесты в подгруппах.** 
-Проведите два логранговых теста. Сравните `A = 0` и `A = 1` отдельно среди пациентов с `wbc <= 100` и среди пациентов с `wbc > 100`. Для каждого теста приведите значение статистики и p-значение. Сформулируйте вывод.
+Проведите два логранговых теста. Сравните `surgery = 0` и `surgery = 1` отдельно среди пациентов с `wbc <= 100` и среди пациентов с `wbc > 100`. Для каждого теста приведите значение статистики и p-значение. Сформулируйте вывод.
 ```{r}
+fit_data <- data %>% filter(wbc_bin == "WBC > 100")
+fit_logrank <- survdiff(Surv(time, status) ~ surgery, fit_data)
+glance(fit_logrank) %>%
+  gt::gt() %>%
+  gt::fmt_number(decimals = 3)
 
+
+fit_data <- data %>% filter(wbc_bin == "WBC <= 100")
+fit_logrank <- survdiff(Surv(time, status) ~ surgery, fit_data)
+glance(fit_logrank) %>%
+  gt::gt() %>%
+  gt::fmt_number(decimals = 3)
 ```
 
 ## 3. Регрессия Кокса 
 * **Задача 3.1.1 Модель только с вмешательством.**
-Постройте моделЬ Кокса для терапии `A`. Представьте коэффициенты регрессии, HR с 95% ДИ и p-value.
+Постройте модель Кокса для хирургического вмешательства `surgery`. Представьте коэффициенты регрессии, HR с 95% ДИ и p-value.
 ```{r}
-
+fit <- coxph(Surv(time, status) ~ surgery, data)
+tidy(fit, conf.int = TRUE, conf.level = 0.95, exp = TRUE) %>%
+  gt::gt() %>%
+  gt::fmt_number()
 ```
 
-* **Задача 3.1.2 Графическая проверка пропорциональности** 
+* **Задача 3.1.2 Графическая проверка пропорциональности.** 
 Проверьте допущение о пропорциональности рисков построив на одном графике кривые в шкале cloglog.
 ```{r}
-
+fit <- survfit(Surv(time, status) ~ surgery, data)
+ggsurvfit(fit, type = "cloglog") +
+  labs(x = "time", y = "log-log survival") +
+  scale_x_log10() +
+  annotation_logticks(sides = "b") +
+  theme_classic(base_size = 13)
 ```
 
-**Задача 3.2.1. Модель с вмешательством и числом лейкоцитов.** 
-Оцените модель Кокса с `A` и `wbc` в исходной шкале. Представьте коэффициенты регрессии, HR с 95% ДИ и p-value.
-```{r}
 
+**Задача 3.2.1. Модель с вмешательством и числом лейкоцитов.** 
+Оцените модель Кокса с `surgery` и `wbc` в исходной шкале. Представьте коэффициенты регрессии, HR с 95% ДИ и p-value.
+```{r}
+fit <- coxph(Surv(time, status) ~ surgery + wbc, data)
+tidy(fit, conf.int = TRUE, conf.level = 0.95, exp = TRUE) %>%
+  gt::gt() %>%
+  gt::fmt_number()
 ```
 
 **Задача 3.2.2. Выбор функциональной формы для `wbc`.**
-Исследуйте форму связи между wbc и log(HR) при учёте вмешательства A. Определите, подходит ли линейная связь с wbc в исходной шкале. Укажите, в каком виде вы включите wbc в модель Кокса, и обоснуйте свой выбор результатами диагностики.
+Исследуйте форму связи между wbc и log(HR) при учёте хирургического вмешательства. Определите, подходит ли линейная связь с wbc в исходной шкале. Укажите, в каком виде вы включите wbc в модель Кокса, и обоснуйте свой выбор результатами диагностики.
 ```{r}
+fit <- coxph(Surv(time, status) ~ surgery, data)
+mart_res <- residuals(fit, type = "martingale")
+plot(
+  data$wbc,
+  mart_res,
+  ylab = "Martingale residuals of Null Cox Model",
+  xlab = "WBC"
+)
+lines(lowess(data$wbc, mart_res), col = "red", lwd = 2)
+abline(h = 0, lty = 2, col = "blue")
 
+plot(
+  log10(data$wbc),
+  mart_res,
+  ylab = "Martingale residuals of Null Cox Model",
+  xlab = "log10(WBC)"
+)
+lines(lowess(log10(data$wbc), mart_res), col = "red", lwd = 2)
+abline(h = 0, lty = 2, col = "blue")
 ```
 
-* **Задача 3.3 Проверка пропорциональности для модели с `A` и `wbc`.**
-Возьмите модель с той формой `wbc`, которую вы выбрали в пункте 3.2.2. Проверьте допущение пропорциональности рисков с помощью `cox.zph()` и графиков масштабированных остатков Шёнфельда.
+* **Задача 3.3 Проверка пропорциональности для модели с `surgery` и `wbc`.**
+Возьмите модель с той формой `wbc`, которую вы выбрали в пункте 3.2.2. Проверьте допущение пропорциональности рисков с помощью остатков Шёнфельда.
 ```{r}
-
+zph_result <- cox.zph(
+  coxph(Surv(time, status) ~ surgery + log10(wbc), data),
+  transform = "km",
+  terms = TRUE,
+  singledf = FALSE,
+  global = TRUE
+)
+plot(zph_result)
+print(zph_result)
 ```
 
 ## 4. Итоговая модель
 
-**Задача 4.** Запишите формулу итоговой модели и кратко обоснуйте выбор с учётом результатов диагностики функциональной формы и пропорциональности рисков. Проинтерпретируйте оценки модели - для каждого предиктора объясните, при каком его изменении, в какую сторону и как меняется HR.
+**Задача 4.** Запишите формулу итоговой модели и кратко обоснуйте выбор с учётом результатов диагностики функциональной формы и пропорциональности рисков. Оцените модель и представьте коэффициенты регрессии, HR с 95% ДИ и p-value.
+Проинтерпретируйте оценки модели - для каждого предиктора объясните, при каком его изменении, в какую сторону и как меняется HR.
+
+```{r}
+fit <- coxph(Surv(time, status) ~ surgery + log10(wbc), data)
+tidy(fit, conf.int = TRUE, conf.level = 0.95, exp = TRUE) %>%
+  gt::gt() %>%
+  gt::fmt_number()
+```
 
 
 * Вы завершили основную часть домашнего задания! Сохраните файл .qmd с кодом, графиками и выводами и соберите HTML-отчёт.
